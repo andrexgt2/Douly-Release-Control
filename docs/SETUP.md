@@ -26,7 +26,7 @@ Import `rulesets/protect-main.json` in:
 
 The ruleset must be Active and enforced. It requires PRs, blocks deletion/force-push, permits squash merge only, and requires the `validate` job.
 
-Do not add production credentials until this ruleset is enforced.
+Do not add any release credential until this ruleset is enforced.
 
 ## 2. Create a read-only token for the private Douly repository
 
@@ -40,11 +40,7 @@ Minimum repository permissions:
 
 No write permission is required.
 
-Store it in this public repository as a GitHub Actions repository secret named:
-
-`DOULY_REPO_READ_TOKEN`
-
-The token value is never committed to this repository.
+Do **not** store it as a repository-level secret.
 
 ## 3. Create and protect the production environment
 
@@ -57,10 +53,13 @@ Recommended rules on the public repository:
 - Required reviewer: `andrexgt2`
 - Deployment branches/tags: Protected branches only
 
-Create these environment secrets:
+Create these **environment secrets** inside `production`:
 
+- `DOULY_REPO_READ_TOKEN`
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
+
+The private-repository token is therefore unavailable to pull-request workflows and becomes available only after the protected production environment gate is satisfied.
 
 Do not keep Cloudflare deployment credentials in the private Douly repository once this control plane is active.
 
@@ -71,11 +70,11 @@ Only `.github/workflows/deploy-douly.yml` may reference production credentials.
 The workflow:
 
 1. receives an exact 40-character Douly SHA;
-2. queries the private Douly repository using the read-only token;
-3. verifies the SHA exists and is contained in `Douly/main`;
-4. reads all exact-SHA release statuses;
-5. fails closed unless Repository, Security, QA and PO are all PASS;
-6. waits for the `production` environment gate;
+2. waits for the protected `production` environment approval;
+3. queries the private Douly repository using the read-only token;
+4. verifies the SHA exists and is contained in `Douly/main`;
+5. reads all exact-SHA release statuses;
+6. fails closed unless Repository, Security, QA and PO are all PASS;
 7. checks out exactly that Douly SHA with credentials persistence disabled;
 8. verifies the checkout SHA;
 9. deploys through Wrangler;
@@ -88,11 +87,13 @@ After setup is complete, run `Deploy Douly production` manually with:
 - a SHA that does not satisfy the exact-SHA gate, or a deliberately mismatched/non-main SHA;
 - `confirm = DEPLOY`.
 
+Approve the `production` environment when prompted so the preflight can read the private repository.
+
 Expected result:
 
 - `preflight` fails;
 - `deploy` is skipped;
-- no Cloudflare production credential is used by a successful deployment step.
+- Wrangler is never invoked.
 
 Record the failed run URL as QA evidence on Douly issue #45.
 
