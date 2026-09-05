@@ -1,0 +1,140 @@
+name: Deploy Douly production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: 'Exact approved 40-character Douly commit SHA'
+        required: true
+        type: string
+      confirm:
+        description: 'Explicit production deployment confirmation'
+        required: true
+        default: NO
+        type: choice
+        options:
+          - NO
+          - DEPLOY
+
+permissions:
+  contents: read
+
+concurrency:
+  group: douly-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DOULY_REPO_READ_TOKEN: ${{ secrets.DOULY_REPO_READ_TOKEN }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      DEPLOY_CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - name: Checkout canonical release policy
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Verify exact-SHA Douly release gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const gate = require('./.github/release-control/release_gate.js');
+          const token = process.env.DOULY_REPO_READ_TOKEN;
+          const sha = process.env.RELEASE_SHA;
+
+          function fail(message) {
+            console.error(message);
+            process.exit(1);
+          }
+
+          if (process.env.DEPLOY_CONFIRM !== 'DEPLOY') fail('Production deploy confirmation missing');
+          if (!gate.validateSha(sha)) fail('release_sha must be an exact lowercase 40-character commit SHA');
+          if (!token) fail('Missing DOULY_REPO_READ_TOKEN');
+
+          const headers = {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28'
+          };
+
+          async function github(path) {
+            const response = await fetch(`https://api.github.com${path}`, { headers });
+            const text = await response.text();
+            if (!response.ok) throw new Error(`${response.status} ${response.statusText}: ${text}`);
+            return text ? JSON.parse(text) : null;
+          }
+
+          (async () => {
+            const repo = gate.SOURCE_REPO;
+            await github(`/repos/${repo}/commits/${sha}`);
+            const compare = await github(`/repos/${repo}/compare/${sha}...main`);
+            if (!gate.targetIsOnMain(compare.status)) {
+              fail(`release_sha is not contained in Douly/main (compare status: ${compare.status})`);
+            }
+
+            const statuses = await github(`/repos/${repo}/commits/${sha}/statuses?per_page=100`);
+            const result = gate.evaluateRequiredStatuses(statuses);
+            if (!result.ok) {
+              for (const item of result.missing) console.error(`Missing release status: ${item.context}`);
+              for (const item of result.failing) console.error(`Non-PASS release status: ${item.context} = ${item.state}`);
+              fail('Immutable Douly release gate is not satisfied for this exact SHA');
+            }
+            console.log(`Douly release gate PASS for exact SHA ${sha}`);
+          })().catch(error => fail(error.stack || error.message));
+          NODE
+
+  deploy:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DOULY_REPO_READ_TOKEN: ${{ secrets.DOULY_REPO_READ_TOKEN }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+    steps:
+      - name: Verify protected production credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 1; }
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID'; exit 1; }
+          test -n "${DOULY_REPO_READ_TOKEN:-}" || { echo 'Missing DOULY_REPO_READ_TOKEN'; exit 1; }
+
+      - name: Checkout exact approved Douly SHA
+        uses: actions/checkout@v4
+        with:
+          repository: andrexgt2/Douly
+          ref: ${{ inputs.release_sha }}
+          token: ${{ secrets.DOULY_REPO_READ_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: douly
+
+      - name: Verify immutable checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C douly rev-parse HEAD)" = "$RELEASE_SHA" || {
+            echo 'Checked-out Douly SHA does not match approved release SHA'
+            exit 1
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Deploy exact approved Douly release to Cloudflare
+        working-directory: douly
+        run: npx --yes wrangler@4 deploy --config wrangler.jsonc
+
+      - name: Confirm deployed state
+        working-directory: douly
+        run: npx --yes wrangler@4 deployments status --name douly-app --config wrangler.jsonc
