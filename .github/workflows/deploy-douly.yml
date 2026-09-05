@@ -28,6 +28,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: production
     env:
       DOULY_REPO_READ_TOKEN: ${{ secrets.DOULY_REPO_READ_TOKEN }}
       RELEASE_SHA: ${{ inputs.release_sha }}
