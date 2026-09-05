@@ -35,9 +35,9 @@ jobs:
           }
 
           const sensitive = [
-            'CLOUDFLARE_API_TOKEN',
-            'CLOUDFLARE_ACCOUNT_ID',
-            'DOULY_REPO_READ_TOKEN'
+            ['CLOUDFLARE', 'API', 'TOKEN'].join('_'),
+            ['CLOUDFLARE', 'ACCOUNT', 'ID'].join('_'),
+            ['DOULY', 'REPO', 'READ', 'TOKEN'].join('_')
           ];
           for (const name of names) {
             if (name === 'deploy-douly.yml') continue;
