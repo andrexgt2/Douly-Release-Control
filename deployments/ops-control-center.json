@@ -1,0 +1,8 @@
+{
+  "source_repo": "andrexgt2/Douly",
+  "source_sha": "e41e40dbb77cb477c1c81fa36c4b5c09f920572f",
+  "hostname": "ops.douly.family",
+  "confirm": "DEPLOY",
+  "requested_by": "product-owner",
+  "reason": "Initial live Douly Control Center deployment"
+}
