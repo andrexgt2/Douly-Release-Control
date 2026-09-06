@@ -39,12 +39,16 @@ jobs:
             ['CLOUDFLARE', 'ACCOUNT', 'ID'].join('_'),
             ['DOULY', 'REPO', 'READ', 'TOKEN'].join('_')
           ];
+          const canonicalDeployWorkflows = new Set([
+            'deploy-douly.yml',
+            'deploy-ops-control-center.yml'
+          ]);
           for (const name of names) {
-            if (name === 'deploy-douly.yml') continue;
+            if (canonicalDeployWorkflows.has(name)) continue;
             const text = fs.readFileSync(path.join(dir, name), 'utf8');
             for (const secret of sensitive) {
               if (text.includes(secret)) {
-                console.error(`Sensitive secret reference outside canonical deploy workflow: ${name} -> ${secret}`);
+                console.error(`Sensitive secret reference outside canonical deploy workflows: ${name} -> ${secret}`);
                 process.exit(1);
               }
             }
