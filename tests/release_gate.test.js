@@ -8,6 +8,16 @@ function status(context, state, id, createdAt) {
   return { context, state, id, created_at: createdAt };
 }
 
+function candidate(overrides = {}) {
+  return {
+    release_candidate_id: 'douly-rc-541-a',
+    source_sha: 'a'.repeat(40),
+    runtime_artifact_hash: 'b'.repeat(64),
+    risk_lane: gate.RISK_LANES.GUARDED,
+    ...overrides
+  };
+}
+
 test('accepts only exact lowercase 40-character SHAs', () => {
   assert.equal(gate.validateSha('a'.repeat(40)), true);
   assert.equal(gate.validateSha('A'.repeat(40)), false);
@@ -15,7 +25,29 @@ test('accepts only exact lowercase 40-character SHAs', () => {
   assert.equal(gate.validateSha('main'), false);
 });
 
-test('requires repository, security, qa and po PASS on the same SHA', () => {
+test('validates minimal release candidate identity', () => {
+  assert.equal(gate.validateCandidateManifest(candidate()).ok, true);
+  assert.equal(gate.validateCandidateManifest(candidate({ runtime_artifact_hash: 'x' })).ok, false);
+  assert.equal(gate.validateCandidateManifest(candidate({ risk_lane: 'UNKNOWN' })).ok, false);
+});
+
+test('runtime evidence can be reused only when runtime artifact hash is unchanged', () => {
+  const original = candidate();
+  const docsOnly = candidate({ source_sha: 'c'.repeat(40) });
+  const runtimeChange = candidate({ source_sha: 'd'.repeat(40), runtime_artifact_hash: 'e'.repeat(64) });
+  assert.equal(gate.mayReuseRuntimeEvidence(original, docsOnly), true);
+  assert.equal(gate.mayReuseRuntimeEvidence(original, runtimeChange), false);
+});
+
+test('FAST lane omits mandatory Security status while GUARDED retains it', () => {
+  const fast = gate.requiredContextsForRiskLane(gate.RISK_LANES.FAST);
+  const guarded = gate.requiredContextsForRiskLane(gate.RISK_LANES.GUARDED);
+  assert.equal(Object.values(fast).includes(gate.REQUIRED_CONTEXTS.security), false);
+  assert.equal(Object.values(guarded).includes(gate.REQUIRED_CONTEXTS.security), true);
+  assert.throws(() => gate.requiredContextsForRiskLane('UNKNOWN'));
+});
+
+test('requires repository, security, qa and po PASS on the same SHA by default', () => {
   const rows = Object.values(gate.REQUIRED_CONTEXTS).map((context, i) =>
     status(context, 'success', i + 1, `2026-09-05T10:0${i}:00Z`)
   );
