@@ -11,6 +11,7 @@ const REQUIRED_CONTEXTS = Object.freeze({
 
 const ALLOWED_WORKFLOWS = Object.freeze([
   'deploy-douly.yml',
+  'deploy-ops-control-center.yml',
   'validate-control-plane.yml'
 ]);
 

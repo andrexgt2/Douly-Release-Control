@@ -57,14 +57,16 @@ test('only an exact main-contained SHA is eligible', () => {
   assert.equal(gate.targetIsOnMain('diverged'), false);
 });
 
-test('workflow allowlist rejects alternate deploy paths', () => {
+test('workflow allowlist permits only canonical product and ops deploy paths', () => {
   assert.equal(gate.validateWorkflowAllowlist([
     'deploy-douly.yml',
+    'deploy-ops-control-center.yml',
     'validate-control-plane.yml'
   ]).ok, true);
 
   const bad = gate.validateWorkflowAllowlist([
     'deploy-douly.yml',
+    'deploy-ops-control-center.yml',
     'validate-control-plane.yml',
     'one-shot-production.yml'
   ]);
