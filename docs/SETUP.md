@@ -6,17 +6,26 @@ It must never contain Douly application source, Supabase data, child data, Cloud
 
 ## Security model
 
-Production deployment is allowed only when all of the following are true for one exact Douly commit SHA:
+There are two canonical production deployment paths:
 
-- `douly/repository-validation = success`
-- `douly/release-security = success`
-- `douly/release-qa = success`
-- `douly/release-po = success`
-- the SHA is contained in `Douly/main`
-- the operator explicitly selects `DEPLOY`
-- the protected `production` environment allows the job to proceed
+1. **Parent-facing Douly application** — requires the complete exact-SHA release tuple:
+   - `douly/repository-validation = success`
+   - `douly/release-security = success`
+   - `douly/release-qa = success`
+   - `douly/release-po = success`
+   - SHA contained in `Douly/main`
+   - explicit `DEPLOY` confirmation
+   - protected `production` environment approval.
+2. **Internal Ops Control Center** — may deploy only the isolated `ops/control-center/` boundary and requires:
+   - exact lowercase 40-character source SHA;
+   - SHA contained in `Douly/main`;
+   - `douly/repository-validation = success` on that exact SHA;
+   - source config pinned to Worker `douly-ops-control-center` and Custom Domain `ops.douly.family`;
+   - `workers_dev = false`;
+   - immutable deployment marker with `confirm = DEPLOY`;
+   - protected `production` environment approval.
 
-Any later BLOCK/failure status on the same context invalidates an older PASS.
+The Ops path is deliberately narrower than the parent-facing release gate because it cannot publish the Douly PWA and its source boundary is restricted to the internal Control Center.
 
 ## 1. Protect this repository first
 
@@ -63,22 +72,18 @@ The private-repository token is therefore unavailable to pull-request workflows 
 
 Do not keep Cloudflare deployment credentials in the private Douly repository once this control plane is active.
 
-## 4. Canonical production workflow
+For the Control Center Custom Domain, the Cloudflare API token must also be able to manage the Worker route/custom-domain binding for the `douly.family` zone.
 
-Only `.github/workflows/deploy-douly.yml` may reference production credentials.
+## 4. Canonical production workflows
 
-The workflow:
+Only these workflows may reference production credentials:
 
-1. receives an exact 40-character Douly SHA;
-2. waits for the protected `production` environment approval;
-3. queries the private Douly repository using the read-only token;
-4. verifies the SHA exists and is contained in `Douly/main`;
-5. reads all exact-SHA release statuses;
-6. fails closed unless Repository, Security, QA and PO are all PASS;
-7. checks out exactly that Douly SHA with credentials persistence disabled;
-8. verifies the checkout SHA;
-9. deploys through Wrangler;
-10. confirms the deployed Cloudflare state.
+- `.github/workflows/deploy-douly.yml`
+- `.github/workflows/deploy-ops-control-center.yml`
+
+`deploy-douly.yml` is the full parent-facing release path and retains the complete Repository + Security + QA + Product Owner exact-SHA gate.
+
+`deploy-ops-control-center.yml` is marker-driven. A change to `deployments/ops-control-center.json` on protected `main` requests deployment of one exact Douly SHA. The workflow validates that SHA, confirms it is on `Douly/main`, verifies repository-validation PASS, checks the pinned Control Center Worker/domain config, checks out that exact SHA and deploys only from `ops/control-center/`.
 
 ## 5. Required negative test for incident #45
 
