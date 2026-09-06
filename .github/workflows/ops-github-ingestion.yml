@@ -1,0 +1,129 @@
+name: Ops GitHub event ingestion
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - closed
+  workflow_run:
+    workflows:
+      - Validate release control plane
+      - Deploy Douly production
+      - Deploy Douly Ops Control Center
+    types:
+      - requested
+      - completed
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      OPS_INGEST_URL: https://rfaiwmiohhjnnzixkaxs.supabase.co/functions/v1/ops-github-ingest
+      OPS_OIDC_AUDIENCE: douly-ops-control-center
+      DOULY_REPOSITORY_ID: '1358491132'
+    steps:
+      - name: Send signed GitHub event to Douly Ops
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+
+          function compactEvent(name, raw) {
+            if (name === 'push') {
+              return {
+                ref: raw.ref,
+                before: raw.before,
+                after: raw.after,
+                compare: raw.compare,
+                commits: Array.isArray(raw.commits) ? raw.commits.map(c => ({ id: c.id })) : [],
+                head_commit: raw.head_commit ? { message: raw.head_commit.message, url: raw.head_commit.url } : null,
+              };
+            }
+            if (name === 'pull_request') {
+              const pr = raw.pull_request || {};
+              return {
+                action: raw.action,
+                number: raw.number,
+                pull_request: {
+                  id: pr.id,
+                  number: pr.number,
+                  title: pr.title,
+                  state: pr.state,
+                  merged: pr.merged,
+                  updated_at: pr.updated_at,
+                  html_url: pr.html_url,
+                  head: pr.head ? { sha: pr.head.sha, ref: pr.head.ref } : null,
+                  base: pr.base ? { ref: pr.base.ref } : null,
+                },
+              };
+            }
+            if (name === 'workflow_run') {
+              const run = raw.workflow_run || {};
+              return {
+                action: raw.action,
+                workflow_run: {
+                  id: run.id,
+                  name: run.name,
+                  run_number: run.run_number,
+                  status: run.status,
+                  conclusion: run.conclusion,
+                  event: run.event,
+                  head_branch: run.head_branch,
+                  head_sha: run.head_sha,
+                  html_url: run.html_url,
+                  display_title: run.display_title,
+                },
+              };
+            }
+            throw new Error(`Unsupported event ${name}`);
+          }
+
+          async function main() {
+            const tokenUrl = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+            tokenUrl.searchParams.set('audience', process.env.OPS_OIDC_AUDIENCE);
+            const tokenResponse = await fetch(tokenUrl, {
+              headers: { Authorization: `bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
+            });
+            if (!tokenResponse.ok) throw new Error(`OIDC token request failed: ${tokenResponse.status}`);
+            const { value: oidcToken } = await tokenResponse.json();
+            if (!oidcToken) throw new Error('OIDC token missing');
+
+            const raw = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+            const body = {
+              repository: process.env.GITHUB_REPOSITORY,
+              repository_id: process.env.DOULY_REPOSITORY_ID,
+              event_name: process.env.GITHUB_EVENT_NAME,
+              sender_run_id: process.env.GITHUB_RUN_ID,
+              event: compactEvent(process.env.GITHUB_EVENT_NAME, raw),
+            };
+
+            const response = await fetch(process.env.OPS_INGEST_URL, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${oidcToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(body),
+            });
+            const responseText = await response.text();
+            if (!response.ok) throw new Error(`Ops ingestion failed: ${response.status} ${responseText}`);
+            console.log(`Douly Ops ingestion accepted: ${responseText}`);
+          }
+
+          main().catch(error => {
+            console.error(error.stack || error.message);
+            process.exit(1);
+          });
+          NODE
