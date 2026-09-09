@@ -63,7 +63,7 @@ jobs:
           // approval unlocks both the read token and Cloudflare credentials.
           const doulyDeploy = fs.readFileSync(path.join(dir, 'deploy-douly.yml'), 'utf8');
           const productionGate = doulyDeploy.indexOf('environment: production');
-          const repoToken = doulyDeploy.indexOf('DOULY_REPO_READ_TOKEN');
+          const repoToken = doulyDeploy.indexOf(sensitive[2]);
           const evidenceCheck = doulyDeploy.indexOf('Verify exact-SHA automated release evidence');
           if (productionGate < 0 || repoToken < productionGate || evidenceCheck < productionGate) {
             console.error('Douly deploy must access private-repo evidence only inside the protected production job');
