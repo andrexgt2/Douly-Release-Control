@@ -57,6 +57,23 @@ jobs:
               process.exit(1);
             }
           }
+
+          // Douly production secrets are environment-scoped. Keep preflight and
+          // deployment inside the same single protected job so the one PO
+          // approval unlocks both the read token and Cloudflare credentials.
+          const doulyDeploy = fs.readFileSync(path.join(dir, 'deploy-douly.yml'), 'utf8');
+          const productionGate = doulyDeploy.indexOf('environment: production');
+          const repoToken = doulyDeploy.indexOf('DOULY_REPO_READ_TOKEN');
+          const evidenceCheck = doulyDeploy.indexOf('Verify exact-SHA automated release evidence');
+          if (productionGate < 0 || repoToken < productionGate || evidenceCheck < productionGate) {
+            console.error('Douly deploy must access private-repo evidence only inside the protected production job');
+            process.exit(1);
+          }
+          if (/^  preflight:\s*$/m.test(doulyDeploy)) {
+            console.error('Separate preflight job would lose production environment-scoped secrets');
+            process.exit(1);
+          }
+
           console.log('Release control workflow boundary OK');
           NODE
 
