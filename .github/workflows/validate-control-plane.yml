@@ -60,19 +60,38 @@ jobs:
             }
           }
 
-          // Douly production secrets are environment-scoped. Keep preflight and
-          // deployment inside the same single protected job so the one PO
-          // approval unlocks both the read token and Cloudflare credentials.
+          const markerPath = 'deployments/douly-production.json';
+          if (!fs.existsSync(markerPath)) {
+            console.error('Missing canonical Douly production request marker');
+            process.exit(1);
+          }
+          const marker = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+          if (typeof marker.release_sha !== 'string' || typeof marker.confirm !== 'string' || typeof marker.request_id !== 'string' || typeof marker.authorized_via !== 'string') {
+            console.error('Douly production request marker schema is invalid');
+            process.exit(1);
+          }
+
           const doulyDeploy = fs.readFileSync(path.join(dir, 'deploy-douly.yml'), 'utf8');
+          if (!doulyDeploy.includes('deployments/douly-production.json')) {
+            console.error('Canonical deploy workflow must watch the versioned Douly production request marker');
+            process.exit(1);
+          }
+          if (!/^  request:\s*$/m.test(doulyDeploy)) {
+            console.error('Canonical deploy workflow must validate request intent before entering production');
+            process.exit(1);
+          }
+          if (!doulyDeploy.includes("authorized_via !== 'chat-product-owner'")) {
+            console.error('Push-triggered deploys must require chat-product-owner authorization provenance');
+            process.exit(1);
+          }
+
+          // All private-repo and Cloudflare credentials remain inside the
+          // production environment job. The preceding request job is secretless.
           const productionGate = doulyDeploy.indexOf(productionEnvironment);
           const repoToken = doulyDeploy.indexOf(sensitive[2]);
           const evidenceCheck = doulyDeploy.indexOf('Verify exact-SHA automated release evidence');
           if (productionGate < 0 || repoToken < productionGate || evidenceCheck < productionGate) {
             console.error('Douly deploy must access private-repo evidence only inside the protected production job');
-            process.exit(1);
-          }
-          if (/^  preflight:\s*$/m.test(doulyDeploy)) {
-            console.error('Separate preflight job would lose production environment-scoped secrets');
             process.exit(1);
           }
 
