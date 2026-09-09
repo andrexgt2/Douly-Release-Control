@@ -15,6 +15,11 @@ on:
         options:
           - NO
           - DEPLOY
+  push:
+    branches:
+      - main
+    paths:
+      - deployments/douly-production.json
 
 permissions:
   contents: read
@@ -24,20 +29,77 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  request:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release_sha: ${{ steps.resolve.outputs.release_sha }}
+      confirm: ${{ steps.resolve.outputs.confirm }}
+      request_id: ${{ steps.resolve.outputs.request_id }}
+    steps:
+      - name: Checkout canonical release policy
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Resolve and validate production request
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_RELEASE_SHA: ${{ inputs.release_sha }}
+          MANUAL_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+
+          const eventName = process.env.EVENT_NAME;
+          let request;
+          if (eventName === 'workflow_dispatch') {
+            request = {
+              release_sha: process.env.MANUAL_RELEASE_SHA,
+              confirm: process.env.MANUAL_CONFIRM,
+              request_id: `manual-${process.env.GITHUB_RUN_ID}`,
+              authorized_via: 'github-workflow-dispatch'
+            };
+          } else if (eventName === 'push') {
+            request = JSON.parse(fs.readFileSync('deployments/douly-production.json', 'utf8'));
+            if (request.authorized_via !== 'chat-product-owner') {
+              throw new Error('Push-triggered production request must declare authorized_via=chat-product-owner');
+            }
+          } else {
+            throw new Error(`Unsupported deployment event: ${eventName}`);
+          }
+
+          const sha = String(request.release_sha || '');
+          const confirm = String(request.confirm || '');
+          const requestId = String(request.request_id || '');
+          if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('release_sha must be an exact lowercase 40-character commit SHA');
+          if (confirm !== 'DEPLOY') throw new Error('Production deploy confirmation missing');
+          if (!/^[A-Za-z0-9._:-]{3,120}$/.test(requestId)) throw new Error('Invalid request_id');
+
+          const output = process.env.GITHUB_OUTPUT;
+          fs.appendFileSync(output, `release_sha=${sha}\nconfirm=${confirm}\nrequest_id=${requestId}\n`);
+          console.log(`Validated production request ${requestId} for ${sha}`);
+          NODE
+
+  deploy:
+    needs: request
+    if: needs.request.outputs.confirm == 'DEPLOY'
+    runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Single human Product Owner gate. Environment-scoped secrets become
-    # available only after this approval, so preflight and deploy stay in
-    # the same protected job.
+    # Production credentials remain environment-scoped. This is still the
+    # single protected production boundary after a request has passed the
+    # secretless syntax/intent check above.
     environment: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DOULY_REPO_READ_TOKEN: ${{ secrets.DOULY_REPO_READ_TOKEN }}
-      RELEASE_SHA: ${{ inputs.release_sha }}
-      DEPLOY_CONFIRM: ${{ inputs.confirm }}
+      RELEASE_SHA: ${{ needs.request.outputs.release_sha }}
+      DEPLOY_REQUEST_ID: ${{ needs.request.outputs.request_id }}
     steps:
       - name: Checkout canonical release policy
         uses: actions/checkout@v4
@@ -66,7 +128,6 @@ jobs:
             process.exit(1);
           }
 
-          if (process.env.DEPLOY_CONFIRM !== 'DEPLOY') fail('Production deploy confirmation missing');
           if (!gate.validateSha(sha)) fail('release_sha must be an exact lowercase 40-character commit SHA');
           if (!token) fail('Missing DOULY_REPO_READ_TOKEN');
 
@@ -106,7 +167,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: andrexgt2/Douly
-          ref: ${{ inputs.release_sha }}
+          ref: ${{ needs.request.outputs.release_sha }}
           token: ${{ secrets.DOULY_REPO_READ_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
