@@ -66,9 +66,6 @@ jobs:
             };
           } else if (eventName === 'push') {
             request = JSON.parse(fs.readFileSync('deployments/douly-production.json', 'utf8'));
-            if (request.authorized_via !== 'chat-product-owner') {
-              throw new Error('Push-triggered production request must declare authorized_via=chat-product-owner');
-            }
           } else {
             throw new Error(`Unsupported deployment event: ${eventName}`);
           }
@@ -77,12 +74,19 @@ jobs:
           const confirm = String(request.confirm || '');
           const requestId = String(request.request_id || '');
           if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('release_sha must be an exact lowercase 40-character commit SHA');
-          if (confirm !== 'DEPLOY') throw new Error('Production deploy confirmation missing');
+          if (!['NO', 'DEPLOY'].includes(confirm)) throw new Error('confirm must be NO or DEPLOY');
           if (!/^[A-Za-z0-9._:-]{3,120}$/.test(requestId)) throw new Error('Invalid request_id');
+          if (confirm === 'DEPLOY' && eventName === 'push' && request.authorized_via !== 'chat-product-owner') {
+            throw new Error('Push-triggered production deploy must declare authorized_via=chat-product-owner');
+          }
 
           const output = process.env.GITHUB_OUTPUT;
           fs.appendFileSync(output, `release_sha=${sha}\nconfirm=${confirm}\nrequest_id=${requestId}\n`);
-          console.log(`Validated production request ${requestId} for ${sha}`);
+          if (confirm === 'DEPLOY') {
+            console.log(`Validated production request ${requestId} for ${sha}`);
+          } else {
+            console.log(`Validated non-deploy request ${requestId}; production job will be skipped`);
+          }
           NODE
 
   deploy:
