@@ -39,6 +39,8 @@ jobs:
             ['CLOUDFLARE', 'ACCOUNT', 'ID'].join('_'),
             ['DOULY', 'REPO', 'READ', 'TOKEN'].join('_')
           ];
+          const productionEnvironment = ['environment', 'production'].join(': ');
+          const productionEnvironmentPattern = new RegExp(['environment', '\\s*production'].join(':'), 'i');
           const canonicalDeployWorkflows = new Set([
             'deploy-douly.yml',
             'deploy-ops-control-center.yml'
@@ -52,7 +54,7 @@ jobs:
                 process.exit(1);
               }
             }
-            if (/environment:\s*production/i.test(text)) {
+            if (productionEnvironmentPattern.test(text)) {
               console.error(`Alternate production environment path detected: ${name}`);
               process.exit(1);
             }
@@ -62,7 +64,7 @@ jobs:
           // deployment inside the same single protected job so the one PO
           // approval unlocks both the read token and Cloudflare credentials.
           const doulyDeploy = fs.readFileSync(path.join(dir, 'deploy-douly.yml'), 'utf8');
-          const productionGate = doulyDeploy.indexOf('environment: production');
+          const productionGate = doulyDeploy.indexOf(productionEnvironment);
           const repoToken = doulyDeploy.indexOf(sensitive[2]);
           const evidenceCheck = doulyDeploy.indexOf('Verify exact-SHA automated release evidence');
           if (productionGate < 0 || repoToken < productionGate || evidenceCheck < productionGate) {
