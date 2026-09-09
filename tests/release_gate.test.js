@@ -48,9 +48,48 @@ test('same candidate id cannot be treated as same binding after identity changes
   assert.equal(gate.mayReuseEvidence(original, rebound, gate.EVIDENCE_SCOPES.CANDIDATE), false);
 });
 
-test('FAST lane omits mandatory Security status while GUARDED retains it', () => { const fast = gate.requiredContextsForRiskLane(gate.RISK_LANES.FAST); const guarded = gate.requiredContextsForRiskLane(gate.RISK_LANES.GUARDED); assert.equal(Object.values(fast).includes(gate.REQUIRED_CONTEXTS.security), false); assert.equal(Object.values(guarded).includes(gate.REQUIRED_CONTEXTS.security), true); assert.throws(() => gate.requiredContextsForRiskLane('UNKNOWN')); });
-test('requires repository, security, qa and po PASS on the same SHA by default', () => { const rows = Object.values(gate.REQUIRED_CONTEXTS).map((context, i) => status(context, 'success', i + 1, `2026-09-05T10:0${i}:00Z`)); assert.equal(gate.evaluateRequiredStatuses(rows).ok, true); });
-test('fails closed when one required status is missing', () => { const rows = [status(gate.REQUIRED_CONTEXTS.repository, 'success', 1, '2026-09-05T10:00:00Z'), status(gate.REQUIRED_CONTEXTS.security, 'success', 2, '2026-09-05T10:01:00Z'), status(gate.REQUIRED_CONTEXTS.qa, 'success', 3, '2026-09-05T10:02:00Z')]; const result = gate.evaluateRequiredStatuses(rows); assert.equal(result.ok, false); assert.deepEqual(result.missing.map(x => x.context), [gate.REQUIRED_CONTEXTS.po]); });
-test('latest BLOCK overrides an older PASS', () => { const rows = [status(gate.REQUIRED_CONTEXTS.repository, 'success', 1, '2026-09-05T10:00:00Z'), status(gate.REQUIRED_CONTEXTS.security, 'success', 2, '2026-09-05T10:01:00Z'), status(gate.REQUIRED_CONTEXTS.security, 'failure', 9, '2026-09-05T11:01:00Z'), status(gate.REQUIRED_CONTEXTS.qa, 'success', 3, '2026-09-05T10:02:00Z'), status(gate.REQUIRED_CONTEXTS.po, 'success', 4, '2026-09-05T10:03:00Z')]; const result = gate.evaluateRequiredStatuses(rows); assert.equal(result.ok, false); assert.deepEqual(result.failing, [{ name: 'security', context: gate.REQUIRED_CONTEXTS.security, state: 'failure' }]); });
+test('FAST lane uses repository plus QA while GUARDED adds automated Security', () => {
+  const fast = gate.requiredContextsForRiskLane(gate.RISK_LANES.FAST);
+  const guarded = gate.requiredContextsForRiskLane(gate.RISK_LANES.GUARDED);
+  assert.deepEqual(fast, { repository: gate.REQUIRED_CONTEXTS.repository, qa: gate.REQUIRED_CONTEXTS.qa });
+  assert.deepEqual(guarded, gate.DEPLOY_REQUIRED_CONTEXTS);
+  assert.equal(Object.values(guarded).includes(gate.REQUIRED_CONTEXTS.security), true);
+  assert.equal(Object.values(guarded).includes(gate.REQUIRED_CONTEXTS.po), false);
+  assert.throws(() => gate.requiredContextsForRiskLane('UNKNOWN'));
+});
+
+test('normal deploy requires automated repository, security and qa evidence only', () => {
+  const rows = Object.values(gate.DEPLOY_REQUIRED_CONTEXTS).map((context, i) => status(context, 'success', i + 1, `2026-09-05T10:0${i}:00Z`));
+  assert.equal(gate.evaluateRequiredStatuses(rows).ok, true);
+});
+
+test('legacy PO status is not a duplicate deploy prerequisite', () => {
+  assert.equal(Object.values(gate.DEPLOY_REQUIRED_CONTEXTS).includes(gate.REQUIRED_CONTEXTS.po), false);
+  const rows = Object.values(gate.DEPLOY_REQUIRED_CONTEXTS).map((context, i) => status(context, 'success', i + 1, `2026-09-05T10:0${i}:00Z`));
+  assert.equal(gate.evaluateRequiredStatuses(rows).ok, true);
+});
+
+test('fails closed when an automated required status is missing', () => {
+  const rows = [
+    status(gate.REQUIRED_CONTEXTS.repository, 'success', 1, '2026-09-05T10:00:00Z'),
+    status(gate.REQUIRED_CONTEXTS.qa, 'success', 3, '2026-09-05T10:02:00Z')
+  ];
+  const result = gate.evaluateRequiredStatuses(rows);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.missing.map(x => x.context), [gate.REQUIRED_CONTEXTS.security]);
+});
+
+test('latest BLOCK overrides an older PASS', () => {
+  const rows = [
+    status(gate.REQUIRED_CONTEXTS.repository, 'success', 1, '2026-09-05T10:00:00Z'),
+    status(gate.REQUIRED_CONTEXTS.security, 'success', 2, '2026-09-05T10:01:00Z'),
+    status(gate.REQUIRED_CONTEXTS.security, 'failure', 9, '2026-09-05T11:01:00Z'),
+    status(gate.REQUIRED_CONTEXTS.qa, 'success', 3, '2026-09-05T10:02:00Z')
+  ];
+  const result = gate.evaluateRequiredStatuses(rows);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.failing, [{ name: 'security', context: gate.REQUIRED_CONTEXTS.security, state: 'failure' }]);
+});
+
 test('only an exact main-contained SHA is eligible', () => { assert.equal(gate.targetIsOnMain('identical'), true); assert.equal(gate.targetIsOnMain('ahead'), true); assert.equal(gate.targetIsOnMain('behind'), false); assert.equal(gate.targetIsOnMain('diverged'), false); });
 test('workflow allowlist permits canonical deploy, ops observation and validation paths only', () => { assert.equal(gate.validateWorkflowAllowlist(['deploy-douly.yml','deploy-ops-control-center.yml','ops-github-ingestion.yml','validate-control-plane.yml']).ok, true); const bad = gate.validateWorkflowAllowlist(['deploy-douly.yml','deploy-ops-control-center.yml','ops-github-ingestion.yml','validate-control-plane.yml','one-shot-production.yml']); assert.equal(bad.ok, false); assert.deepEqual(bad.unexpected, ['one-shot-production.yml']); });

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       release_sha:
-        description: 'Exact approved 40-character Douly commit SHA'
+        description: 'Exact 40-character Douly commit SHA'
         required: true
         type: string
       confirm:
-        description: 'Explicit production deployment confirmation'
+        description: 'Production deployment intent'
         required: true
         default: NO
         type: choice
@@ -28,7 +28,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: production
     env:
       DOULY_REPO_READ_TOKEN: ${{ secrets.DOULY_REPO_READ_TOKEN }}
       RELEASE_SHA: ${{ inputs.release_sha }}
@@ -39,7 +38,7 @@ jobs:
         with:
           ref: main
 
-      - name: Verify exact-SHA Douly release gate
+      - name: Verify exact-SHA automated release evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -79,13 +78,14 @@ jobs:
             }
 
             const statuses = await github(`/repos/${repo}/commits/${sha}/statuses?per_page=100`);
-            const result = gate.evaluateRequiredStatuses(statuses);
+            const result = gate.evaluateRequiredStatuses(statuses, gate.DEPLOY_REQUIRED_CONTEXTS);
             if (!result.ok) {
-              for (const item of result.missing) console.error(`Missing release status: ${item.context}`);
-              for (const item of result.failing) console.error(`Non-PASS release status: ${item.context} = ${item.state}`);
-              fail('Immutable Douly release gate is not satisfied for this exact SHA');
+              for (const item of result.missing) console.error(`Missing automated release status: ${item.context}`);
+              for (const item of result.failing) console.error(`Non-PASS automated release status: ${item.context} = ${item.state}`);
+              fail('Automated exact-SHA release evidence is not satisfied');
             }
-            console.log(`Douly release gate PASS for exact SHA ${sha}`);
+            console.log(`Automated release evidence PASS for exact SHA ${sha}`);
+            console.log('Product Owner authorization is enforced once by the protected production environment on the deploy job.');
           })().catch(error => fail(error.stack || error.message));
           NODE
 
@@ -93,6 +93,7 @@ jobs:
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # This protected environment is the single human Product Owner production gate.
     environment: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
