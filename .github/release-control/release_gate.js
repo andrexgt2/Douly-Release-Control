@@ -9,6 +9,15 @@ const REQUIRED_CONTEXTS = Object.freeze({
   po: 'douly/release-po'
 });
 
+// Normal production deploys require automated exact-SHA engineering evidence.
+// Product Owner authorization is enforced by the protected GitHub `production`
+// environment on the deploy job, so it is intentionally not duplicated here.
+const DEPLOY_REQUIRED_CONTEXTS = Object.freeze({
+  repository: REQUIRED_CONTEXTS.repository,
+  security: REQUIRED_CONTEXTS.security,
+  qa: REQUIRED_CONTEXTS.qa
+});
+
 const RISK_LANES = Object.freeze({ FAST: 'FAST', GUARDED: 'GUARDED' });
 const EVIDENCE_SCOPES = Object.freeze({ RUNTIME: 'runtime', SOURCE: 'source', CANDIDATE: 'candidate' });
 
@@ -39,8 +48,8 @@ function classifyRiskLane(changedPaths) {
 }
 
 function requiredContextsForRiskLane(riskLane) {
-  if (riskLane === RISK_LANES.FAST) return Object.freeze({ repository: REQUIRED_CONTEXTS.repository, qa: REQUIRED_CONTEXTS.qa, po: REQUIRED_CONTEXTS.po });
-  if (riskLane === RISK_LANES.GUARDED) return REQUIRED_CONTEXTS;
+  if (riskLane === RISK_LANES.FAST) return Object.freeze({ repository: REQUIRED_CONTEXTS.repository, qa: REQUIRED_CONTEXTS.qa });
+  if (riskLane === RISK_LANES.GUARDED) return DEPLOY_REQUIRED_CONTEXTS;
   throw new Error(`Unknown risk lane: ${riskLane}`);
 }
 
@@ -91,7 +100,7 @@ function latestStatusesByContext(statuses) {
   return latest;
 }
 
-function evaluateRequiredStatuses(statuses, requiredContexts = REQUIRED_CONTEXTS) {
+function evaluateRequiredStatuses(statuses, requiredContexts = DEPLOY_REQUIRED_CONTEXTS) {
   const latest = latestStatusesByContext(statuses); const missing = []; const failing = [];
   for (const [name, context] of Object.entries(requiredContexts)) { const row = latest.get(context); if (!row) missing.push({ name, context }); else if (row.state !== 'success') failing.push({ name, context, state: row.state || 'unknown' }); }
   return Object.freeze({ ok: missing.length === 0 && failing.length === 0, missing, failing });
@@ -104,4 +113,4 @@ function validateWorkflowAllowlist(workflowNames, allowed = ALLOWED_WORKFLOWS) {
   return Object.freeze({ ok: unexpected.length === 0 && missing.length === 0, unexpected, missing });
 }
 
-module.exports = Object.freeze({ SOURCE_REPO, REQUIRED_CONTEXTS, RISK_LANES, EVIDENCE_SCOPES, ALLOWED_WORKFLOWS, validateSha, validateArtifactHash, validateCandidateId, classifyRiskLane, validateCandidateManifest, candidateRuntimeIdentity, sameCandidateBinding, mayReuseEvidence, mayReuseRuntimeEvidence, requiredContextsForRiskLane, latestStatusesByContext, evaluateRequiredStatuses, targetIsOnMain, validateWorkflowAllowlist });
+module.exports = Object.freeze({ SOURCE_REPO, REQUIRED_CONTEXTS, DEPLOY_REQUIRED_CONTEXTS, RISK_LANES, EVIDENCE_SCOPES, ALLOWED_WORKFLOWS, validateSha, validateArtifactHash, validateCandidateId, classifyRiskLane, validateCandidateManifest, candidateRuntimeIdentity, sameCandidateBinding, mayReuseEvidence, mayReuseRuntimeEvidence, requiredContextsForRiskLane, latestStatusesByContext, evaluateRequiredStatuses, targetIsOnMain, validateWorkflowAllowlist });
