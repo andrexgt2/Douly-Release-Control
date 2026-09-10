@@ -1,6 +1,6 @@
 {
-  "release_sha": "0000000000000000000000000000000000000000",
-  "confirm": "NO",
-  "request_id": "chat-wiring-test-20260909",
-  "authorized_via": "none"
+  "release_sha": "df2d1cd8d6a03392f528918b88a483c10bd37989",
+  "confirm": "DEPLOY",
+  "request_id": "chat-prod-20260910-df2d1cd8",
+  "authorized_via": "chat-product-owner"
 }
