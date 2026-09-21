@@ -1,8 +1,8 @@
 {
   "source_repo": "andrexgt2/Douly",
-  "source_sha": "2fdfb2e3c60db77f060fd03bfe75a6494d94f2a8",
+  "source_sha": "27d433eb163c2a930ecb1508e18567fb38715ddb",
   "hostname": "ops.douly.family",
   "confirm": "DEPLOY",
   "requested_by": "product-owner",
-  "reason": "Deploy Support Inbox and runtime-gated Support email UI"
+  "reason": "Deploy sticky section navigation with direct Support access"
 }
