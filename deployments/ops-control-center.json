@@ -1,8 +1,8 @@
 {
   "source_repo": "andrexgt2/Douly",
-  "source_sha": "27d433eb163c2a930ecb1508e18567fb38715ddb",
+  "source_sha": "f8dd50f251a130d42f61891667e0a65ed63d64c8",
   "hostname": "ops.douly.family",
   "confirm": "DEPLOY",
   "requested_by": "product-owner",
-  "reason": "Deploy sticky section navigation with direct Support access"
+  "reason": "Deploy truthful Ops task states, PR lifecycle tracking and polling fallback"
 }
