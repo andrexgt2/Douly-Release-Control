@@ -128,7 +128,7 @@ jobs:
 
       - name: Build localized marketing site
         working-directory: douly/marketing-site
-        run: ./build.sh
+        run: bash ./build.sh
 
       - name: Run marketing contract tests
         working-directory: douly
