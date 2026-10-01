@@ -43,6 +43,7 @@ jobs:
           const productionEnvironmentPattern = new RegExp(['environment', '\\s*production'].join(':'), 'i');
           const canonicalDeployWorkflows = new Set([
             'deploy-douly.yml',
+            'deploy-marketing.yml',
             'deploy-ops-control-center.yml'
           ]);
           for (const name of names) {
@@ -71,6 +72,22 @@ jobs:
             process.exit(1);
           }
 
+          const marketingMarkerPath = 'deployments/marketing-production.json';
+          if (!fs.existsSync(marketingMarkerPath)) {
+            console.error('Missing canonical marketing production request marker');
+            process.exit(1);
+          }
+          const marketingMarker = JSON.parse(fs.readFileSync(marketingMarkerPath, 'utf8'));
+          if (marketingMarker.source_repo !== 'andrexgt2/Douly' ||
+              marketingMarker.worker !== 'douly-family' ||
+              marketingMarker.hostname !== 'douly.family' ||
+              typeof marketingMarker.source_sha !== 'string' ||
+              typeof marketingMarker.confirm !== 'string' ||
+              typeof marketingMarker.authorized_via !== 'string') {
+            console.error('Marketing production request marker schema is invalid');
+            process.exit(1);
+          }
+
           const doulyDeploy = fs.readFileSync(path.join(dir, 'deploy-douly.yml'), 'utf8');
           if (!doulyDeploy.includes('deployments/douly-production.json')) {
             console.error('Canonical deploy workflow must watch the versioned Douly production request marker');
@@ -85,6 +102,24 @@ jobs:
             process.exit(1);
           }
 
+          const marketingDeploy = fs.readFileSync(path.join(dir, 'deploy-marketing.yml'), 'utf8');
+          if (!marketingDeploy.includes('deployments/marketing-production.json')) {
+            console.error('Canonical marketing deploy workflow must watch the versioned marketing production marker');
+            process.exit(1);
+          }
+          if (!marketingDeploy.includes("marker.authorized_via !== 'chat-product-owner'")) {
+            console.error('Marketing deploy must require chat-product-owner authorization provenance');
+            process.exit(1);
+          }
+          if (!marketingDeploy.includes("config.name !== 'douly-family'")) {
+            console.error('Marketing deploy must pin the douly-family Worker');
+            process.exit(1);
+          }
+          if (!marketingDeploy.includes('marketing-support-config')) {
+            console.error('Marketing deploy must restore the canonical live support configuration');
+            process.exit(1);
+          }
+
           // All private-repo and Cloudflare credentials remain inside the
           // production environment job. The preceding request job is secretless.
           const productionGate = doulyDeploy.indexOf(productionEnvironment);
@@ -92,6 +127,14 @@ jobs:
           const evidenceCheck = doulyDeploy.indexOf('Verify exact-SHA automated release evidence');
           if (productionGate < 0 || repoToken < productionGate || evidenceCheck < productionGate) {
             console.error('Douly deploy must access private-repo evidence only inside the protected production job');
+            process.exit(1);
+          }
+
+          const marketingProductionGate = marketingDeploy.indexOf(productionEnvironment);
+          const marketingRepoToken = marketingDeploy.indexOf(sensitive[2]);
+          const marketingBoundary = marketingDeploy.indexOf('Verify exact-SHA marketing release boundary');
+          if (marketingProductionGate < 0 || marketingRepoToken < marketingProductionGate || marketingBoundary < marketingProductionGate) {
+            console.error('Marketing deploy must access private-repo source only inside the protected production job');
             process.exit(1);
           }
 
