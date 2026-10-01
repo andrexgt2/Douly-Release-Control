@@ -58,6 +58,7 @@ test('only an exact SHA contained in main is eligible', () => {
 test('workflow allowlist permits only canonical deploy, observation and validation paths', () => {
   const canonical = [
     'deploy-douly.yml',
+    'deploy-marketing.yml',
     'deploy-ops-control-center.yml',
     'ops-github-ingestion.yml',
     'validate-control-plane.yml'
