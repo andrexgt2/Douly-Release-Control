@@ -1,6 +1,6 @@
 {
-  "release_sha": "715f70db2504514333e7fcc8e8b27305b1357a7d",
+  "release_sha": "5942aa6bd9785fd74e3a814d786b8fcd22b03ac6",
   "confirm": "DEPLOY",
-  "request_id": "chat-prod-20261002-715f70db-organize-dormant-surface",
+  "request_id": "chat-prod-20261003-5942aa6b-organize-ui-activation",
   "authorized_via": "chat-product-owner"
 }
