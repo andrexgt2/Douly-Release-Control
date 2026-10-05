@@ -1,6 +1,6 @@
 {
-  "release_sha": "5942aa6bd9785fd74e3a814d786b8fcd22b03ac6",
+  "release_sha": "2782dcc686ef49cd9ecb4a2216e50c65abd38c01",
   "confirm": "DEPLOY",
-  "request_id": "chat-prod-20261003-5942aa6b-organize-ui-activation",
+  "request_id": "chat-prod-20261005-2782dcc6-ui-v2-5-1-68",
   "authorized_via": "chat-product-owner"
 }
