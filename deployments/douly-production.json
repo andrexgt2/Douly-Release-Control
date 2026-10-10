@@ -1,6 +1,6 @@
 {
-  "release_sha": "1be35d3fd0e03680cb9c079d01e7f60748d79c57",
+  "release_sha": "ac5953073125ad8b989217ddb294bac4ea77ee79",
   "confirm": "DEPLOY",
-  "request_id": "chat-prod-20261008-1be35d3f-ui-v2-5-1-70",
+  "request_id": "chat-prod-20261010-ac595307-ux-v3",
   "authorized_via": "chat-product-owner"
 }
